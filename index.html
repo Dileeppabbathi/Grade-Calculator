@@ -31,6 +31,19 @@
   .mutedSmall{color:var(--muted);font-size:12px}
   .badge{display:inline-block;padding:4px 8px;border:1px solid #353a56;border-radius:999px;background:#121423;color:#cfd3ff;font-size:12px}
   .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  .del-btn {
+    background:none;
+    border:none;
+    cursor:pointer;
+    font-size:18px;
+    color:#f87171;
+    padding:4px 8px;
+    transition:transform 0.2s, color 0.2s;
+  }
+  .del-btn:hover {
+    transform:scale(1.2);
+    color:#ef4444;
+  }
 </style>
 </head>
 <body>
@@ -72,7 +85,7 @@
           <th class="right">Future % (optional)</th>
           <th class="right">Projected Category %</th>
           <th class="right">Weighted Contribution</th>
-          <th></th>
+          <th class="right">🗑</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -93,69 +106,38 @@
     </table>
   </div>
 
-  <!-- Status / Outputs -->
-  <div class="panel">
-    <div id="status" class="muted">Weights should sum to <b>100%</b>.</div>
-    <div class="row" style="justify-content:space-between;margin-top:10px">
-      <div>
-        <div><b>Projected Final (assumed future %):</b> <span id="overall" class="ok">0.00%</span></div>
-        <div class="mutedSmall">
-          Range if you score 100% on everything remaining: <span id="rangeMax">—</span> ·
-          if 0% on remaining: <span id="rangeMin">—</span>
-        </div>
-      </div>
-      <div>
-        <b>To hit target <span id="targetEcho">90%</span> you need average on remaining: </b>
-        <span id="needed" class="badge">—</span>
-      </div>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <label for="whatIf">What-if future %:</label>
-      <input id="whatIf" type="range" min="0" max="100" step="1" value="85" style="width:260px">
-      <span id="whatIfEcho" class="badge">85%</span>
-      <span class="mutedSmall">Drag to see how your final grade changes.</span>
-      <div style="margin-left:auto">
-        <b>Projected with what-if:</b> <span id="whatIfResult" class="ok">—</span>
-      </div>
-    </div>
-    <div id="bandWarn" class="mutedSmall" style="margin-top:8px"></div>
-  </div>
-
   <div class="panel">
     <b>Notes / Requirements</b>
     <ul class="mutedSmall">
       <li>Enter weights as <i>20</i> or <i>20%</i>. Weights should total 100% for accurate projections.</li>
       <li><b>Planned Total</b> = total points expected in the category by term end. Leave blank if no more items remain.</li>
-      <li>“Required average on remaining” uses: <code>needed = (Target − current_weighted) / weighted_remaining</code>.</li>
-      <li>Use the “What-if” slider to see how your grade could rise or fall depending on future scores.</li>
+      <li>Use “Future %” to guess future performance; or use the slider to see “what if” results.</li>
     </ul>
   </div>
 </div>
 
 <script>
-  // ---------- utils ----------
   const $ = (s, d=document)=>d.querySelector(s);
   const $$ = (s, d=document)=>Array.from(d.querySelectorAll(s));
   const pct = v => isFinite(v) ? (v*100).toFixed(2)+'%' : '—';
   const toNum = v => { const s=String(v??'').trim(); if(!s) return NaN; return parseFloat(s); };
   const parseWeight = raw => { const s=String(raw??'').trim(); if(!s) return 0; return s.endsWith('%')? parseFloat(s)/100 : parseFloat(s)/100; };
 
-  // ---------- row template ----------
   function rowTemplate(d={}) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><input placeholder="Assignments / Exams / Project" value="${d.name||''}"></td>
       <td class="right"><input inputmode="decimal" placeholder="20 or 20%" value="${d.weight||''}"></td>
       <td class="right"><input inputmode="decimal" placeholder="earned" value="${d.earned||''}"></td>
-      <td class="right"><input inputmode="decimal" placeholder="possible so far" value="${d.possible||''}"></td>
+      <td class="right"><input inputmode="decimal" placeholder="possible" value="${d.possible||''}"></td>
       <td class="right"><input inputmode="decimal" placeholder="planned total" value="${d.planned||''}"></td>
       <td class="right"><span class="sofar">—</span></td>
-      <td class="right"><input inputmode="decimal" placeholder="override %" value="${d.future||''}"></td>
+      <td class="right"><input inputmode="decimal" placeholder="future %" value="${d.future||''}"></td>
       <td class="right"><span class="projCat">—</span></td>
       <td class="right"><span class="weighted">—</span></td>
-      <td><button class="btn danger del">Delete</button></td>`;
-    tr.querySelectorAll('input').forEach(i=>i.addEventListener('input', recalc));
-    tr.querySelector('.del').addEventListener('click', ()=>{ tr.remove(); recalc(); });
+      <td class="right"><button class="del-btn" title="Delete Row">🗑</button></td>`;
+    tr.querySelectorAll("input").forEach(i=>i.addEventListener("input",recalc));
+    tr.querySelector(".del-btn").addEventListener("click",()=>{tr.remove();recalc();});
     return tr;
   }
 
@@ -163,173 +145,86 @@
     return $$('#rows tr').map(tr=>{
       const [name, wt, e, p, plan, , fut] = tr.querySelectorAll('input');
       return {
-        name: name.value,
-        weightRaw: wt.value,
-        weight: parseWeight(wt.value),
-        earned: toNum(e.value),
-        possible: toNum(p.value),
-        planned: toNum(plan.value),
-        future: toNum(fut.value)
+        name: name.value, weight: parseWeight(wt.value),
+        earned: toNum(e.value), possible: toNum(p.value),
+        planned: toNum(plan.value), future: toNum(fut.value)
       };
     });
   }
 
   function setRowsData(arr){
-    $('#rows').innerHTML = '';
+    $('#rows').innerHTML='';
     arr.forEach(d=>$('#rows').appendChild(rowTemplate(d)));
     recalc();
   }
 
-  // ---------- math & projections ----------
   function calcProjection(rows, defaultFuturePct){
-    let weightSum=0, earnedSum=0, possibleSum=0, plannedSum=0;
-    let weightedCurrent=0, weightedRemaining=0, projectedWeighted=0;
-    rows.forEach((r, idx)=>{
-      const w = isFinite(r.weight)? r.weight : 0;
-      const e = isFinite(r.earned)? r.earned : 0;
-      const p = isFinite(r.possible)? r.possible : 0;
-      const t = isFinite(r.planned)? (r.planned>0?r.planned:NaN) : NaN; // planned total
-      const plan = isFinite(t) ? t : (isFinite(p) ? p : 0);
-      const remainingPts = Math.max(plan - (isFinite(p)?p:0), 0);
-      const sofarPct = (p>0) ? (e/p) : NaN;
-      const futPct = isFinite(r.future) ? (r.future/100) : (isFinite(defaultFuturePct)? defaultFuturePct/100 : 0);
-      const projPct = plan>0 ? ((e + futPct*remainingPts)/plan) : (isFinite(sofarPct)? sofarPct : 0);
-
-      const currentWeightedPart = plan>0 && p>0 ? w * (e/plan) : 0;
-      const remainingWeightedPart = plan>0 ? w * (remainingPts/plan) : 0;
-      const weightedCat = w * projPct;
-
-      weightSum += w;
-      if (p>0){ earnedSum += e; possibleSum += p; }
-      plannedSum += plan;
-      weightedCurrent += currentWeightedPart;
-      weightedRemaining += remainingWeightedPart;
-      projectedWeighted += weightedCat;
-
-      const tr = $$('#rows tr')[idx];
-      tr.querySelector('.sofar').textContent = isFinite(sofarPct)? pct(sofarPct) : '—';
-      tr.querySelector('.projCat').textContent = pct(projPct);
-      tr.querySelector('.weighted').textContent = pct(weightedCat);
+    let weightSum=0, projectedWeighted=0;
+    rows.forEach((r,idx)=>{
+      const w=isFinite(r.weight)?r.weight:0;
+      const e=isFinite(r.earned)?r.earned:0;
+      const p=isFinite(r.possible)?r.possible:0;
+      const t=isFinite(r.planned)?(r.planned>0?r.planned:NaN):NaN;
+      const plan=isFinite(t)?t:(isFinite(p)?p:0);
+      const remain=Math.max(plan-(isFinite(p)?p:0),0);
+      const sofar=(p>0)?(e/p):NaN;
+      const fut=isFinite(r.future)?(r.future/100):(isFinite(defaultFuturePct)?defaultFuturePct/100:0);
+      const proj=(plan>0)?((e+fut*remain)/plan):(isFinite(sofar)?sofar:0);
+      const weighted=w*proj;
+      weightSum+=w; projectedWeighted+=weighted;
+      const tr=$$('#rows tr')[idx];
+      tr.querySelector('.sofar').textContent=isFinite(sofar)?pct(sofar):'—';
+      tr.querySelector('.projCat').textContent=pct(proj);
+      tr.querySelector('.weighted').textContent=pct(weighted);
     });
-
-    return {
-      weightSum, earnedSum, possibleSum, plannedSum,
-      weightedCurrent, weightedRemaining, projectedWeighted
-    };
+    return {weightSum,projectedWeighted};
   }
 
   function recalc(){
-    const target = toNum($('#target').value);
-    const defaultFuture = toNum($('#futureAssume').value);
-    const rows = getRowsData();
-    const s = calcProjection(rows, defaultFuture);
-
-    $('#weightSum').textContent = (s.weightSum*100).toFixed(2)+'%';
-    $('#earnedSum').textContent = isFinite(s.earnedSum)? s.earnedSum.toFixed(2) : '0';
-    $('#possibleSum').textContent = isFinite(s.possibleSum)? s.possibleSum.toFixed(2) : '0';
-    $('#plannedSum').textContent = isFinite(s.plannedSum)? s.plannedSum.toFixed(2) : '0';
-    $('#avgSoFar').textContent = (s.possibleSum>0) ? pct(s.earnedSum/s.possibleSum) : '—';
-    $('#projAvg').textContent = pct(s.projectedWeighted / (s.weightSum||1));
-    $('#weightedTotal').textContent = pct(s.projectedWeighted);
-
-    $('#overall').textContent = pct(s.projectedWeighted);
-    $('#targetEcho').textContent = isFinite(target)? target.toFixed(1)+'%' : '—';
-
-    const diff = s.weightSum - 1;
-    const status = $('#status');
-    status.innerHTML = Math.abs(diff) < 1e-6
-      ? 'Weights sum to <b>100%</b>.'
-      : `Weights are <span class="${diff>0?'err':'warn'}">${Math.abs(diff*100).toFixed(2)}% ${diff>0?'over':'under'}</span> 100%. Adjust to total 100%.`;
-
-    let needed = NaN;
-    if (isFinite(target)){
-      const T = target/100;
-      if (s.weightedRemaining > 0){
-        needed = (T - s.weightedCurrent) / s.weightedRemaining;
-        const txt = (needed>=0 && needed<=1) ? (needed*100).toFixed(2)+'%' :
-          (needed>1 ? 'Impossible (>100% needed)' :
-           (needed<0 ? 'Already guaranteed (≤0% needed)' : '—'));
-        $('#needed').textContent = txt;
-        $('#needed').className = 'badge ' + (needed>1 ? 'err' : (needed<0 ? 'ok' : ''));
-      } else {
-        $('#needed').textContent = 'No remaining weight';
-        $('#needed').className = 'badge warn';
-      }
-    } else {
-      $('#needed').textContent = '—';
-      $('#needed').className = 'badge';
-    }
-
-    const maxFinal = s.weightedCurrent + 1*s.weightedRemaining;
-    const minFinal = s.weightedCurrent + 0*s.weightedRemaining;
-    $('#rangeMax').textContent = pct(maxFinal);
-    $('#rangeMin').textContent = pct(minFinal);
-
-    const wif = toNum($('#whatIf').value);
-    $('#whatIfEcho').textContent = (wif||0).toFixed(0)+'%';
-    const alt = calcProjection(rows, wif);
-    $('#whatIfResult').textContent = pct(alt.projectedWeighted);
-    $('#whatIfResult').className = (alt.projectedWeighted>=0.9)?'ok':(alt.projectedWeighted>=0.8?'warn':'err');
-
-    const band = alt.projectedWeighted>=0.9?'A (≥90%)'
-                : alt.projectedWeighted>=0.8?'B (80–89%)'
-                : alt.projectedWeighted>=0.7?'C (70–79%)'
-                : 'below C';
-    $('#bandWarn').innerHTML = `At ${wif.toFixed(0)}% on remaining work, you’re tracking a <b>${band}</b>.`;
+    const rows=getRowsData();
+    const defFuture=toNum($('#futureAssume').value);
+    const s=calcProjection(rows,defFuture);
+    $('#weightSum').textContent=(s.weightSum*100).toFixed(2)+'%';
+    $('#weightedTotal').textContent=pct(s.projectedWeighted);
+    $('#overall').textContent=pct(s.projectedWeighted);
   }
 
-  // --- Reset marks & weights (keep rows & names) ---
   function resetMarksAndWeights(){
     $$('#rows tr').forEach(tr=>{
-      const inputs = tr.querySelectorAll('input');
-      const [nameI, wtI, eI, pI, planI, futI] = inputs;
-      if (wtI) wtI.value = '';
-      if (eI) eI.value = '';
-      if (pI) pI.value = '';
-      if (planI) planI.value = '';
-      if (futI) futI.value = '';
+      const inputs=tr.querySelectorAll('input');
+      const [nameI,wtI,eI,pI,planI,futI]=inputs;
+      if(wtI)wtI.value='';
+      if(eI)eI.value='';
+      if(pI)pI.value='';
+      if(planI)planI.value='';
+      if(futI)futI.value='';
     });
     recalc();
   }
 
-  // --- Export / Import ---
-  $('#exportBtn').addEventListener('click', ()=>{
-    const blob = new Blob([JSON.stringify(getRowsData(), null, 2)], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'grade_setup.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
+  $('#addRow').addEventListener('click',()=>{$('#rows').appendChild(rowTemplate());recalc();});
+  $('#resetMarks').addEventListener('click',resetMarksAndWeights);
+  $('#clearAll').addEventListener('click',()=>{if(confirm('Clear all rows?')){$('#rows').innerHTML='';recalc();}});
+  $('#exportBtn').addEventListener('click',()=>{
+    const blob=new Blob([JSON.stringify(getRowsData(),null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='grade_setup.json';a.click();
   });
-  $('#importFile').addEventListener('change', e=>{
-    const f = e.target.files[0]; if(!f) return;
-    const reader = new FileReader();
-    reader.onload = ()=>{ try{ setRowsData(JSON.parse(reader.result)); }catch{ alert('Invalid JSON'); } e.target.value=''; };
+  $('#importFile').addEventListener('change',e=>{
+    const f=e.target.files[0];if(!f)return;
+    const reader=new FileReader();
+    reader.onload=()=>{try{setRowsData(JSON.parse(reader.result));}catch{alert('Invalid JSON');}};
     reader.readAsText(f);
   });
 
-  // --- Buttons ---
-  $('#addRow').addEventListener('click', ()=>{ $('#rows').appendChild(rowTemplate()); recalc(); });
-  $('#resetMarks').addEventListener('click', resetMarksAndWeights);
-  $('#clearAll').addEventListener('click', ()=>{ if(confirm('Clear ALL rows and data?')){ setRowsData([]); } });
-
-  // --- Always load default rows (no localStorage) ---
   (function init(){
     setRowsData([
-      {name:'Assignments',   weight:'20', earned:'', possible:'', planned:'', future:''},
-      {name:'Project',       weight:'30', earned:'', possible:'', planned:'', future:''},
-      {name:'Quizzes/Exams', weight:'40', earned:'', possible:'', planned:'', future:''},
-      {name:'Participation', weight:'10', earned:'', possible:'', planned:'', future:''},
+      {name:'Assignments',weight:'20',earned:'',possible:'',planned:'',future:''},
+      {name:'Project',weight:'30',earned:'',possible:'',planned:'',future:''},
+      {name:'Quizzes/Exams',weight:'40',earned:'',possible:'',planned:'',future:''},
+      {name:'Participation',weight:'10',earned:'',possible:'',planned:'',future:''},
     ]);
   })();
-
-  // Inputs that affect projection
-  $('#target').addEventListener('input', recalc);
-  $('#futureAssume').addEventListener('input', recalc);
-  $('#whatIf').addEventListener('input', recalc);
 </script>
-
-<!-- Build tag to confirm latest deploy -->
-<div style="position:fixed;right:12px;bottom:12px;font:12px system-ui;opacity:.5">Build: 6</div>
+<div style="position:fixed;right:12px;bottom:12px;font:12px system-ui;opacity:.5">Build: 7</div>
 </body>
 </html>
