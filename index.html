@@ -43,7 +43,8 @@
   <div class="panel">
     <div class="row">
       <button class="btn" id="addRow">+ Add Category</button>
-      <button class="btn danger" id="clearAll">Clear</button>
+      <button class="btn" id="resetMarks">Reset marks & weights</button>
+      <button class="btn danger" id="clearAll">Clear ALL</button>
       <button class="btn" id="exportBtn">Export JSON</button>
       <label class="btn" for="importFile" style="cursor:pointer">Import JSON</label>
       <input id="importFile" type="file" accept="application/json" style="display:none">
@@ -124,8 +125,8 @@
     <b>Notes / Requirements</b>
     <ul class="mutedSmall">
       <li>Enter weights as <i>20</i> or <i>20%</i>. Weights should total 100% for accurate projections.</li>
-      <li><b>Planned Total</b> = total points expected in the category by term end (e.g., all homeworks combined = 300 pts). If blank, it’s assumed equal to “Possible (to date)” meaning no more items remain.</li>
-      <li>“Required average on remaining” uses the formula: <code>needed = (Target − current_weighted) / weighted_remaining</code>. If the result is &gt; 100% or there’s no remaining weight, the target is flagged as impossible.</li>
+      <li><b>Planned Total</b> = total points expected in the category by term end. Leave blank if no more items remain.</li>
+      <li>“Required average on remaining” uses: <code>needed = (Target − current_weighted) / weighted_remaining</code>.</li>
       <li>Use the “What-if” slider to see how your grade could rise or fall depending on future scores.</li>
     </ul>
   </div>
@@ -179,7 +180,6 @@
   }
 
   function calcProjection(rows, defaultFuturePct){
-    // Return summary and populate row display values
     let weightSum=0, earnedSum=0, possibleSum=0, plannedSum=0;
     let weightedCurrent=0, weightedRemaining=0, projectedWeighted=0;
     rows.forEach((r, idx)=>{
@@ -193,12 +193,10 @@
       const futPct = isFinite(r.future) ? (r.future/100) : (isFinite(defaultFuturePct)? defaultFuturePct/100 : 0);
       const projPct = plan>0 ? ((e + futPct*remainingPts)/plan) : (isFinite(sofarPct)? sofarPct : 0);
 
-      // contributions
-      const currentWeightedPart = plan>0 && p>0 ? w * (e/plan) : 0; // current points scaled to plan
+      const currentWeightedPart = plan>0 && p>0 ? w * (e/plan) : 0;
       const remainingWeightedPart = plan>0 ? w * (remainingPts/plan) : 0;
       const weightedCat = w * projPct;
 
-      // totals
       weightSum += w;
       if (p>0){ earnedSum += e; possibleSum += p; }
       plannedSum += plan;
@@ -206,7 +204,6 @@
       weightedRemaining += remainingWeightedPart;
       projectedWeighted += weightedCat;
 
-      // write to DOM
       const tr = $$('#rows tr')[idx];
       tr.querySelector('.sofar').textContent = isFinite(sofarPct)? pct(sofarPct) : '—';
       tr.querySelector('.projCat').textContent = pct(projPct);
@@ -225,35 +222,28 @@
     const rows = getRowsData();
     const s = calcProjection(rows, defaultFuture);
 
-    // Tfoot
     $('#weightSum').textContent = (s.weightSum*100).toFixed(2)+'%';
     $('#earnedSum').textContent = isFinite(s.earnedSum)? s.earnedSum.toFixed(2) : '0';
     $('#possibleSum').textContent = isFinite(s.possibleSum)? s.possibleSum.toFixed(2) : '0';
     $('#plannedSum').textContent = isFinite(s.plannedSum)? s.plannedSum.toFixed(2) : '0';
     $('#avgSoFar').textContent = (s.possibleSum>0) ? pct(s.earnedSum/s.possibleSum) : '—';
-    $('#projAvg').textContent = pct(s.projectedWeighted / (s.weightSum||1)); // just for display
+    $('#projAvg').textContent = pct(s.projectedWeighted / (s.weightSum||1));
     $('#weightedTotal').textContent = pct(s.projectedWeighted);
 
-    // Status + overall
     $('#overall').textContent = pct(s.projectedWeighted);
     $('#targetEcho').textContent = isFinite(target)? target.toFixed(1)+'%' : '—';
 
     const diff = s.weightSum - 1;
     const status = $('#status');
-    if (Math.abs(diff) < 1e-6){
-      status.innerHTML = 'Weights sum to <b>100%</b>.';
-    } else {
-      const msg = diff>0 ? 'over' : 'under';
-      status.innerHTML = `Weights are <span class="${diff>0?'err':'warn'}">${Math.abs(diff*100).toFixed(2)}% ${msg}</span> 100%. Adjust to total 100%.`;
-    }
+    status.innerHTML = Math.abs(diff) < 1e-6
+      ? 'Weights sum to <b>100%</b>.'
+      : `Weights are <span class="${diff>0?'err':'warn'}">${Math.abs(diff*100).toFixed(2)}% ${diff>0?'over':'under'}</span> 100%. Adjust to total 100%.`;
 
-    // Needed future % to hit target
     let needed = NaN;
     if (isFinite(target)){
-      // target% expressed as 0..1 against total weight (1.0)
       const T = target/100;
       if (s.weightedRemaining > 0){
-        needed = (T - s.weightedCurrent) / s.weightedRemaining; // 0..1
+        needed = (T - s.weightedCurrent) / s.weightedRemaining;
         const txt = (needed>=0 && needed<=1) ? (needed*100).toFixed(2)+'%' :
           (needed>1 ? 'Impossible (>100% needed)' :
            (needed<0 ? 'Already guaranteed (≤0% needed)' : '—'));
@@ -268,28 +258,41 @@
       $('#needed').className = 'badge';
     }
 
-    // Range (min/max)
     const maxFinal = s.weightedCurrent + 1*s.weightedRemaining;
     const minFinal = s.weightedCurrent + 0*s.weightedRemaining;
     $('#rangeMax').textContent = pct(maxFinal);
     $('#rangeMin').textContent = pct(minFinal);
 
-    // What-if slider
     const wif = toNum($('#whatIf').value);
     $('#whatIfEcho').textContent = (wif||0).toFixed(0)+'%';
-    // recompute projectedWeighted using what-if as default future
     const alt = calcProjection(rows, wif);
     $('#whatIfResult').textContent = pct(alt.projectedWeighted);
     $('#whatIfResult').className = (alt.projectedWeighted>=0.9)?'ok':(alt.projectedWeighted>=0.8?'warn':'err');
 
-    // Band warning text
     const band = alt.projectedWeighted>=0.9?'A (≥90%)'
                 : alt.projectedWeighted>=0.8?'B (80–89%)'
                 : alt.projectedWeighted>=0.7?'C (70–79%)'
                 : 'below C';
     $('#bandWarn').innerHTML = `At ${wif.toFixed(0)}% on remaining work, you’re tracking a <b>${band}</b>.`;
 
-    // Save
+    localStorage.setItem('grade_planner_v2', JSON.stringify(getRowsData()));
+  }
+
+  // --- NEW: Reset marks & weights (keep rows & category names) ---
+  function resetMarksAndWeights(){
+    $$('#rows tr').forEach(tr=>{
+      const inputs = tr.querySelectorAll('input');
+      const [nameI, wtI, eI, pI, planI, futI] = inputs;
+      // keep name; clear weight and numeric fields
+      if (wtI) wtI.value = '';
+      if (eI) eI.value = '';
+      if (pI) pI.value = '';
+      if (planI) planI.value = '';
+      if (futI) futI.value = '';
+    });
+    // optional: keep target and what-if as is; just recalc
+    recalc();
+    // persist cleared state (names preserved)
     localStorage.setItem('grade_planner_v2', JSON.stringify(getRowsData()));
   }
 
@@ -311,7 +314,8 @@
 
   // buttons
   $('#addRow').addEventListener('click', ()=>{ $('#rows').appendChild(rowTemplate()); recalc(); });
-  $('#clearAll').addEventListener('click', ()=>{ if(confirm('Clear all rows?')){ setRowsData([]); } });
+  $('#resetMarks').addEventListener('click', resetMarksAndWeights);
+  $('#clearAll').addEventListener('click', ()=>{ if(confirm('Clear ALL rows and data?')){ setRowsData([]); } });
 
   // init
   (function init(){
