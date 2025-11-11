@@ -140,6 +140,7 @@
   const toNum = v => { const s=String(v??'').trim(); if(!s) return NaN; return parseFloat(s); };
   const parseWeight = raw => { const s=String(raw??'').trim(); if(!s) return 0; return s.endsWith('%')? parseFloat(s)/100 : parseFloat(s)/100; };
 
+  // ---------- row template ----------
   function rowTemplate(d={}) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -179,6 +180,7 @@
     recalc();
   }
 
+  // ---------- math & projections ----------
   function calcProjection(rows, defaultFuturePct){
     let weightSum=0, earnedSum=0, possibleSum=0, plannedSum=0;
     let weightedCurrent=0, weightedRemaining=0, projectedWeighted=0;
@@ -274,29 +276,23 @@
                 : alt.projectedWeighted>=0.7?'C (70–79%)'
                 : 'below C';
     $('#bandWarn').innerHTML = `At ${wif.toFixed(0)}% on remaining work, you’re tracking a <b>${band}</b>.`;
-
-    localStorage.setItem('grade_planner_v2', JSON.stringify(getRowsData()));
   }
 
-  // --- NEW: Reset marks & weights (keep rows & category names) ---
+  // --- Reset marks & weights (keep rows & names) ---
   function resetMarksAndWeights(){
     $$('#rows tr').forEach(tr=>{
       const inputs = tr.querySelectorAll('input');
       const [nameI, wtI, eI, pI, planI, futI] = inputs;
-      // keep name; clear weight and numeric fields
       if (wtI) wtI.value = '';
       if (eI) eI.value = '';
       if (pI) pI.value = '';
       if (planI) planI.value = '';
       if (futI) futI.value = '';
     });
-    // optional: keep target and what-if as is; just recalc
     recalc();
-    // persist cleared state (names preserved)
-    localStorage.setItem('grade_planner_v2', JSON.stringify(getRowsData()));
   }
 
-  // export / import
+  // --- Export / Import ---
   $('#exportBtn').addEventListener('click', ()=>{
     const blob = new Blob([JSON.stringify(getRowsData(), null, 2)], {type:'application/json'});
     const a = document.createElement('a');
@@ -312,37 +308,28 @@
     reader.readAsText(f);
   });
 
-  // buttons
+  // --- Buttons ---
   $('#addRow').addEventListener('click', ()=>{ $('#rows').appendChild(rowTemplate()); recalc(); });
   $('#resetMarks').addEventListener('click', resetMarksAndWeights);
   $('#clearAll').addEventListener('click', ()=>{ if(confirm('Clear ALL rows and data?')){ setRowsData([]); } });
 
-  // init
+  // --- Always load default rows (no localStorage) ---
   (function init(){
-    const saved = localStorage.getItem('grade_planner_v2');
-    if(saved){ try{ setRowsData(JSON.parse(saved)); return; }catch{} }
     setRowsData([
-      {name:'Assignments', weight:'20', earned:'', possible:'', planned:'', future:''},
-      {name:'Project', weight:'30', earned:'', possible:'', planned:'', future:''},
+      {name:'Assignments',   weight:'20', earned:'', possible:'', planned:'', future:''},
+      {name:'Project',       weight:'30', earned:'', possible:'', planned:'', future:''},
       {name:'Quizzes/Exams', weight:'40', earned:'', possible:'', planned:'', future:''},
       {name:'Participation', weight:'10', earned:'', possible:'', planned:'', future:''},
     ]);
   })();
 
+  // Inputs that affect projection
   $('#target').addEventListener('input', recalc);
   $('#futureAssume').addEventListener('input', recalc);
   $('#whatIf').addEventListener('input', recalc);
-  // --- Initialization: Always load default rows ---
-  (function init(){
-  // Always load defaults fresh every page load
-  setRowsData([
-    {name:'Assignments', weight:'20', earned:'', possible:'', planned:'', future:''},
-    {name:'Project', weight:'30', earned:'', possible:'', planned:'', future:''},
-    {name:'Quizzes/Exams', weight:'40', earned:'', possible:'', planned:'', future:''},
-    {name:'Participation', weight:'10', earned:'', possible:'', planned:'', future:''},
-  ]);
-})();
-
 </script>
+
+<!-- Build tag to confirm latest deploy -->
+<div style="position:fixed;right:12px;bottom:12px;font:12px system-ui;opacity:.5">Build: 6</div>
 </body>
 </html>
